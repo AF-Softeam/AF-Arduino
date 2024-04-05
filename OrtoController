@@ -1,0 +1,65 @@
+#include <DHT.h>          // Include la libreria per il sensore DHT
+#include <Wire.h>         // Include la libreria per la comunicazione I2C
+#include <RTClib.h>       // Include la libreria per il modulo RTC (Real Time Clock)
+
+#define DHTPIN 2          // Pin del sensore DHT
+#define DHTTYPE DHT11     // Tipo di sensore DHT (DHT11 o DHT22)
+#define VALVE_PIN 3       // Pin della valvola
+#define INTERVAL 600000   // Intervallo di campionamento (10 minuti in millisecondi)
+#define VALVE_DURATION 600000 // Durata dell'apertura della valvola (10 minuti in millisecondi)
+#define DAY_DURATION 86400000 // Durata di un giorno (24 ore in millisecondi)
+
+DHT dht(DHTPIN, DHTTYPE);  // Inizializza il sensore DHT
+RTC_DS3231 rtc;             // Inizializza il modulo RTC
+
+float temperature;          // Variabile per la temperatura
+float humidity;             // Variabile per l'umidità
+bool valveOpen = false;     // Variabile booleana per tenere traccia dello stato della valvola
+unsigned long lastValveActivation = 0; // Variabile per memorizzare l'ultimo tempo in cui la valvola è stata attivata
+
+void setup() {
+  pinMode(VALVE_PIN, OUTPUT);   // Imposta il pin della valvola come output
+  Serial.begin(9600);           // Inizializza la comunicazione seriale
+  dht.begin();                  // Inizializza il sensore DHT
+  Wire.begin();                 // Inizializza la comunicazione I2C
+  rtc.begin();                  // Inizializza il modulo RTC
+  
+  // Imposta l'orario di avvio della valvola (imposta l'orario desiderato)
+  rtc.adjust(DateTime(F(__DATE__), F(__TIME__))); // Imposta l'orario corrente come orario di avvio
+}
+
+void loop() {
+  DateTime now = rtc.now();     // Ottieni l'orario corrente dal modulo RTC
+  
+  // Verifica se è passato almeno un giorno dall'ultimo utilizzo della valvola
+  if (now.unixtime() - lastValveActivation >= DAY_DURATION) {
+    // Leggi temperatura e umidità dal sensore DHT
+    temperature = dht.readTemperature();
+    humidity = dht.readHumidity();
+    
+    // Stampa temperatura e umidità sulla porta seriale
+    Serial.print("Temperatura: ");
+    Serial.print(temperature);
+    Serial.print(" °C, Umidità: ");
+    Serial.print(humidity);
+    Serial.println(" %");
+    
+    // Se la temperatura supera una soglia, attiva la valvola
+    if (temperature > 25) {
+      openValve();
+      Serial.println("Valvola attivata!"); // Stampa un messaggio sulla porta seriale
+    }
+  }
+  
+  // Attendi fino al prossimo intervallo di campionamento
+  delay(INTERVAL);
+}
+
+void openValve() {
+  digitalWrite(VALVE_PIN, HIGH);  // Attiva la valvola
+  valveOpen = true;               // Imposta lo stato della valvola su aperta
+  lastValveActivation = rtc.now().unixtime(); // Registra l'ora di attivazione della valvola
+  delay(VALVE_DURATION);          // Attendi la durata dell'apertura della valvola
+  digitalWrite(VALVE_PIN, LOW);   // Disattiva la valvola
+  valveOpen = false;              // Imposta lo stato della valvola su chiusa
+}
